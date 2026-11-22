@@ -16,21 +16,20 @@ public class TransactionHelper {
         this.sessionFactory = sessionFactory;
     }
 
-    public void executeTransaction(Consumer<Session> action) {
-        Transaction transaction = null;
-        try (Session session = sessionFactory.openSession()) {
-            transaction = session.beginTransaction();
-            action.accept(session);
-            transaction.commit();
-        }
-    }
-        
     public <T> T executeTransaction(Function<Session, T> action) {
-        try (Session session = sessionFactory.openSession()) {
-            Transaction transaction = session.beginTransaction();
+        Session session = sessionFactory.getCurrentSession();
+        Transaction transaction = session.getTransaction();
+        if (transaction.isActive()) {
+            return action.apply(session);
+        }
+        transaction = session.beginTransaction();
+        try {
             T result = action.apply(session);
             transaction.commit();
             return result;
+        } catch (RuntimeException e) {
+            if (transaction.isActive()) transaction.rollback();
+            throw e;
         }
     }
 }

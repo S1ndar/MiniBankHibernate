@@ -1,96 +1,131 @@
 package account;
 
+import config.TransactionHelper;
 import org.springframework.stereotype.Component;
-import java.util.HashMap;
-import java.util.Map;
+import user.User;
+import java.util.Comparator;
+import java.util.List;
 
 @Component
 public class AccountService {
-    private final Map<Integer, Account> accounts = new HashMap<>();
-    private int idCounter = 1;
-
     private final AccountProperties accountProperties;
+    private final TransactionHelper transactionHelper;
 
-    public AccountService(AccountProperties accountProperties) {
+    public AccountService(AccountProperties accountProperties, TransactionHelper transactionHelper) {
         this.accountProperties = accountProperties;
+        this.transactionHelper = transactionHelper;
     }
 
-    public Account createDefaultAccount(int userId) {
-        return accountCreate(userId, accountProperties.getDefaultAmount());
+    public Account createDefaultAccount(User user) {
+        return accountCreate(user, accountProperties.getDefaultAmount());
     }
 
-    public Account createAnotherAccount(int userId) {
-        return accountCreate(userId, 0);
+    public Account createAnotherAccount(User user) {
+        return accountCreate(user, 0);
     }
 
-    private Account accountCreate(int userId, int initBalance) {
-        int accountId = idCounter++;
-        Account account = new Account(accountId, userId, initBalance);
-        accounts.put(accountId, account);
-        return account;
+    private Account accountCreate(User user, int initBalance) {
+        return transactionHelper.executeTransaction(session -> {
+            Account account = new Account();
+            account.setUser(user);
+            account.setMoneyAmount(initBalance);
+            session.persist(account);
+            return account;
+        });
     }
 
-    public void closeAccount(int accountId) {
-        getAccountById(accountId);
-        accounts.remove(accountId);
+    public CloseAccountResult accountClose(int accountId) {
+        return transactionHelper.executeTransaction(session -> {
+            Account accountToClose = getAccountById(accountId);
+            User user =  accountToClose.getUser();
+            List<Account> allUserAccounts = user.getAccounts();
+            if (allUserAccounts.size() <= 1) {
+                throw new IllegalStateException("Cannot close the only account for user "
+                        + user.getLogin() + ", ID= " + user.getId());
+            }
+
+            Account targetAccount = allUserAccounts.stream()
+                    .filter(account -> account.getId() != accountId)
+                    .min(Comparator.comparingInt(Account::getId))
+                    .orElseThrow(() -> new IllegalStateException("No target account found."));
+
+            TransferResult transferResult = null;
+            if (accountToClose.getMoneyAmount() > 0) {
+                transferResult = accountTransfer(
+                        accountToClose.getId(),
+                        targetAccount.getId(),
+                        accountToClose.getMoneyAmount()
+                );
+            }
+
+            allUserAccounts.remove(accountToClose);
+            session.remove(accountToClose);
+            return new CloseAccountResult(accountId, user.getId(), targetAccount.getId(), transferResult);
+        });
     }
 
     public Account accountDeposit(int accountId, int amount) {
         validateAmount(amount);
-        Account account = getAccountById(accountId);
-        account.setMoneyAmount(account.getMoneyAmount() + amount);
-        return account;
+        return transactionHelper.executeTransaction(session -> {
+            Account account = getAccountById(accountId);
+            account.setMoneyAmount(Math.addExact(amount, account.getMoneyAmount()));
+            return account;
+        });
     }
 
     public Account accountWithdraw(int accountId, int amount) {
         validateAmount(amount);
-        Account account = getAccountById(accountId);
+        return transactionHelper.executeTransaction(session -> {
+            Account account = getAccountById(accountId);
 
-        if (account.getMoneyAmount() < amount) {
-            throw new IllegalStateException("Insufficient funds on account " + accountId
-                    + ". Current balance: " + account.getMoneyAmount());
-        }
+            if (account.getMoneyAmount() < amount) {
+                throw new IllegalStateException("Insufficient funds on account ID= " + accountId
+                        + ". Current balance: " + account.getMoneyAmount());
+            }
 
-        account.setMoneyAmount(account.getMoneyAmount() - amount);
-        return account;
+            account.setMoneyAmount(account.getMoneyAmount() - amount);
+            return account;
+        });
     }
 
     public TransferResult accountTransfer(int fromId, int toId, int amount) {
         validateAmount(amount);
-
         if (fromId == toId) {
             throw new IllegalArgumentException("Cannot transfer money to the same account (ID= " + fromId + ").");
         }
 
-        Account fromAccount = getAccountById(fromId);
-        Account toAccount = getAccountById(toId);
+        return transactionHelper.executeTransaction(session -> {
+            Account fromAccount = getAccountById(fromId);
+            Account toAccount = getAccountById(toId);
 
-        if (fromAccount.getMoneyAmount() < amount) {
-            throw new IllegalStateException("Insufficient funds for transfer on account " + fromId
-                    + ". Current balance: " + fromAccount.getMoneyAmount());
-        }
+            if (fromAccount.getMoneyAmount() < amount) {
+                throw new IllegalStateException("Insufficient funds for transfer on account ID= " + fromId
+                        + ". Current balance: " + fromAccount.getMoneyAmount());
+            }
 
-        boolean isSameUser = fromAccount.getUserId() == toAccount.getUserId();
-        double commission = isSameUser ? 0.0 : accountProperties.getTransferCommission();
+            boolean isSameUser = fromAccount.getUser().getId() == toAccount.getUser().getId();
+            double rate = isSameUser ? 0.0 : accountProperties.getTransferCommission();
+            int amountToTransfer = (int) Math.round(amount * (1 - rate));
+            int commissionInAmount = amount - amountToTransfer;
 
-        int commissionInAmount = (int) Math.round(commission * amount);
-        int amountToTransfer = amount - commissionInAmount;
+            fromAccount.setMoneyAmount(fromAccount.getMoneyAmount() - amount);
+            toAccount.setMoneyAmount(Math.addExact(toAccount.getMoneyAmount(),amountToTransfer));
 
-        fromAccount.setMoneyAmount(fromAccount.getMoneyAmount() - amount);
-        toAccount.setMoneyAmount(toAccount.getMoneyAmount() + amountToTransfer);
-
-        return new TransferResult(fromAccount, toAccount, amount, amountToTransfer, isSameUser, commissionInAmount);
+            return new TransferResult(fromAccount, toAccount, amount, amountToTransfer, isSameUser, commissionInAmount);
+        });
     }
 
     public Account getAccountById(int accountId) {
         if (accountId <= 0) {
             throw new IllegalArgumentException("Id must be positive");
         }
-        Account account = accounts.get(accountId);
-        if (account == null) {
-            throw new IllegalArgumentException("Account with ID=" + accountId + " not found.");
-        }
-        return account;
+        return transactionHelper.executeTransaction(session -> {
+            Account account = session.find(Account.class, accountId);
+            if (account == null) {
+                throw new IllegalArgumentException("Account with ID=" + accountId + " not found.");
+            }
+            return account;
+        });
     }
 
     private void validateAmount(int amount) {

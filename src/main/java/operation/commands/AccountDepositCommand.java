@@ -19,10 +19,10 @@ public class AccountDepositCommand implements OperationCommand {
 
     @Override
     public void execute() {
-        int accountId = consoleInput.readInt("Enter account id:");
+        int accountId = consoleInput.readInt("Enter account ID:");
         int deposit = consoleInput.readInt("Enter amount:");
         Account account = accountService.accountDeposit(accountId, deposit);
-        System.out.println("Deposited " + deposit + " to account " + account.getId()
+        System.out.println("Deposited " + deposit + " to account ID= " + account.getId()
                 + " New balance: " + account.getMoneyAmount());
     }
 
