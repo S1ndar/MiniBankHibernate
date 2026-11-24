@@ -23,7 +23,7 @@ public class AccountWithdrawCommand implements OperationCommand {
         int accountId = consoleInput.readInt("Account ID: ");
         int amount = consoleInput.readInt("Amount: ");
         Account account = accountService.accountWithdraw(accountId, amount);
-        System.out.println("Withdrawn " + amount + " from account " + account.getId()
+        System.out.println("Withdrawn " + amount + " from account ID= " + account.getId()
                 + ". New balance: " + account.getMoneyAmount());
     }
 

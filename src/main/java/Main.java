@@ -8,7 +8,6 @@ public class Main {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(ApplicationConfig.class);
         OperationConsoleListener operationConsoleListener = context.getBean(OperationConsoleListener.class);
         operationConsoleListener.listenUpdates();
-
         context.close();
     }
 }

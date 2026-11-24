@@ -1,6 +1,4 @@
-package user;
-
-import account.TransferResult;
+package account;
 
 public record CloseAccountResult(
         int closedAccountId,

@@ -15,7 +15,7 @@ public class ShowAllUsersCommand implements OperationCommand {
 
     @Override
     public void execute() {
-        System.out.println(userService.showAllUsers());
+        System.out.println(userService.getAllUsers());
     }
 
     @Override

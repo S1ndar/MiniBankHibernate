@@ -18,8 +18,8 @@ public class AccountTransferCommand implements OperationCommand {
 
     @Override
     public void execute() {
-        int fromId = consoleInput.readInt("From: id");
-        int toId = consoleInput.readInt("To: id");
+        int fromId = consoleInput.readInt("From: account ID");
+        int toId = consoleInput.readInt("To: account ID");
         int amount = consoleInput.readInt("Amount: ");
 
         TransferResult result = accountService.accountTransfer(fromId, toId, amount);
@@ -28,8 +28,8 @@ public class AccountTransferCommand implements OperationCommand {
                 ? " (no commission, same user)"
                 : " commission " + result.commission() + " recipient received: " + result.amountToTransfer();
 
-        System.out.println("Transfer completed from account " + result.fromAccount().getId()
-                + " to account " + result.toAccount().getId()
+        System.out.println("Transfer completed from account ID= " + result.fromAccount().getId()
+                + " to account ID= " + result.toAccount().getId()
                 + " . Amount: " + result.amount() + commissionMsg);
     }
 
